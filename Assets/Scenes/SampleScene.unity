@@ -954,7 +954,7 @@ MonoBehaviour:
   constants:
     randomSeed: 539662031
     startIteration: 0
-    iterationCount: 10
+    iterationCount: 100
     framesPerIteration: 1
     totalIterations: 100
     instanceCount: 1
@@ -1055,7 +1055,7 @@ MonoBehaviour:
             rid: 1804855628852887558
         backroundImageNumber: 956
         scenarioIterationNumber: 10000
-        occlusionTolerance: 5
+        occlusionTolerance: 10
     - rid: 1804855628852887553
       type: {class: UniformSampler, ns: UnityEngine.Perception.Randomization.Samplers,
         asm: Unity.Perception.Runtime}

@@ -57,53 +57,118 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
             {"M8x50", new Dictionary<string, float>{{"rotation", 87.1376f}, {"translation", 0.0052f}}},
         */
 
+        private Dictionary<string, Dictionary<string, Vector3[]>> translationsToSlots = new Dictionary<string, Dictionary<string, Vector3[]>>{
+            {"mushroombutton", new Dictionary<string, Vector3[]>{
+                {"2-slot", new Vector3[] {
+                    new Vector3(0, 1.506f, 0.0356f),
+                    new Vector3(0, -1.506f, 0.0356f)
+                }},
+                {"3-slot", new Vector3[] {
+                    new Vector3(0, 0.0301f, 0.0356f),
+                    new Vector3(0, 0, 0.0356f),
+                    new Vector3(0, -0.0301f, 0.0356f)
+                }}
+            }},
+            {"redbutton", new Dictionary<string, Vector3[]>{
+                {"2-slot", new Vector3[] {
+                    new Vector3(0, 1.506f, 0.0251f),
+                    new Vector3(0, -1.506f, 0.0251f)
+                }},
+                {"3-slot", new Vector3[] {
+                    new Vector3(0, 0.0301f, 0.0251f),
+                    new Vector3(0, 0, 0.0251f),
+                    new Vector3(0, -0.0301f, 0.0251f)
+                }}
+            }},
+            {"arrowbutton", new Dictionary<string, Vector3[]>{
+                {"2-slot", new Vector3[] {
+                    new Vector3(0, 1.506f, 0.0251f),
+                    new Vector3(0, -1.506f, 0.0251f)
+                }},
+                {"3-slot", new Vector3[] {
+                    new Vector3(0, 0.0301f, 0.0251f),
+                    new Vector3(0, 0, 0.0251f),
+                    new Vector3(0, -0.0301f, 0.0251f)
+                }}
+            }}
+        };
+
         private int iterationNumber = 0;
         private bool notVisibleFacePlaced = false;
 
-        protected override void OnIterationStart() 
-        {
+        protected override void OnIterationStart() {
+
+            // Getting tags correspoding to the randomizer.
             var tags = tagManager.Query<RelativePlacementRandomizerTag>();
 
+            // Ordering tags.
             List<RelativePlacementRandomizerTag> orderedTags = orderTags(tags);
 
             if(iterationNumber == 0){
+                // Loading reference poses if it's the first iteration.
                 using(StreamReader r = new StreamReader("poses_azure.json")){
                     string text = r.ReadToEnd();
                     referencePoses = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, Dictionary<string, float>>>>(text);
                 }
+
+                // Clearing previously saved occlusions.
+                using(StreamWriter w = new StreamWriter("occlusions.txt")){
+                    w.Write(String.Empty);
+                }
             }
             
+            // Calculating the current background from the iteration number.
+            // This is used to load the appropriate reference pose.
             int imageNumber = (int)System.Math.Floor((double)iterationNumber*backroundImageNumber/scenarioIterationNumber);
 
-            var rotation = referencePoses[imageNumber.ToString()]["rotation"];
-            var translation = referencePoses[imageNumber.ToString()]["translation"];
-
+            // List used to track already placed objects.
             List<RelativePlacementRandomizerTag> placedTags = new List<RelativePlacementRandomizerTag>();
 
+            // Bool used to track whether a button with an occluded face has been placed.
             notVisibleFacePlaced = false;
+
+            // Maximum number of attempts executed to place each object.
             int maxAttempts = 20;
-            Debug.Log(iterationNumber);
+
+            // Arrays used to track if the slots of the button boards are free.
+            Dictionary<string, bool[]> boardStates = new Dictionary<string, bool[]>{
+                {"2-slot", new bool[] {true, true}},
+                {"3-slot", new bool[] {true, true, true}}
+            };
+
             foreach(var tag in orderedTags){
-                bool placed = placeObject(tag, placedTags, referencePoses[imageNumber.ToString()], maxAttempts);
+                bool placed = placeObject(tag, placedTags, referencePoses[imageNumber.ToString()], maxAttempts, boardStates);
                 if(placed){
                     placedTags.Add(tag);
                 }
             }
 
-            iterationNumber++;
-            
+            iterationNumber++;            
         }
 
         private bool placeObject(RelativePlacementRandomizerTag tag, 
                                 List<RelativePlacementRandomizerTag> placedTags, 
                                 Dictionary<string, Dictionary<string, float>> referencePose, 
-                                int maxAttempts){
+                                int maxAttempts,
+                                Dictionary<string, bool[]> boardStates){
 
             // Makes maxAttempts attempts to place the object corresponding to the specified tag relative to the given reference system.
             // Returns true if successful, false otherwise.
 
             bool invalid = true;
             int currentAttempt = 0;
+
+            if(tag.name != "2-slot" && tag.name != "3-slot"){
+                var r = new System.Random();
+                int choice = r.Next(4);
+
+                if(choice < 2 && placedTags.Count > 1){
+                    bool success = placeButtonInBoard(tag, placedTags[choice], boardStates);
+                    if(success){
+                        return true;
+                    }
+                }
+            }
 
             while(invalid && currentAttempt < maxAttempts){
                 
@@ -123,8 +188,6 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
                 // Check if button faces are visible
                 if((tag.name == "arrowbutton" || tag.name == "redbutton") && !invalid){
                     bool occluded = checkButtonFaceOccluded(tag, placedTags);
-                    Debug.Log(tag.name);
-                    Debug.Log(occluded);
                     
                     if(occluded && notVisibleFacePlaced){
                         // Limiting to one occluded button per image, necessary for EfficientPose's implementation.
@@ -132,6 +195,10 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
                     }
                     else if(occluded){
                         notVisibleFacePlaced = true;
+                        using(StreamWriter w = new StreamWriter("occlusions.txt", append: true)){
+                            string text = iterationNumber.ToString() + " " + tag.name;
+                            w.WriteLine(text);
+                        }
                     }
                 }
 
@@ -154,24 +221,32 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
             var rotation = referencePose["rotation"];
             var translation = referencePose["translation"];
 
+            // Building reference rotation from stored data
             float qx = rotation["x"];
             float qy = rotation["y"];
             float qz = rotation["z"];
             float qw = rotation["w"];
             
             tag.transform.rotation = new Quaternion(qx, qy, qz, qw);
+
+            // Applying random rotation to the object
             tag.transform.rotation *= Quaternion.Euler(rotationParameter.Sample());
 
+            // Building reference position from stored data
             Vector3 objectPosition = new Vector3(translation["x"], translation["y"], translation["z"]);
+
+            // Generating a random translation for the object in the relative reference
             Vector3 relativePosition = positionParameter.Sample();
 
+            // Generating pose corrections to realistically place the object
             if(poseCorrections.ContainsKey(tag.name)){
                 Vector3 rotationCorrection = new Vector3(0.0f, 0.0f, 0.0f);
                 rotationCorrection.y += poseCorrections[tag.name]["rotation"];
                 relativePosition.z += poseCorrections[tag.name]["translation"];
                 tag.transform.rotation *= Quaternion.Euler(rotationCorrection);
             }
-                
+
+            // Transforming the relative translation to the absolute reference system   
             float R11 = 1.0f - 2.0f * (qy * qy + qz * qz);
             float R12 = 2.0f * (qx * qy - qz * qw);
             float R13 = 2.0f * (qx * qz + qy * qw);
@@ -186,8 +261,84 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
             float absY = R21 * relativePosition.x + R22*relativePosition.y +  R23*relativePosition.z;
             float absZ = R31 * relativePosition.x + R32*relativePosition.y +  R33*relativePosition.z;
 
+            // Applying the randomized translation + correction to the object position.
             objectPosition += new Vector3(absX, absY, absZ);
             tag.transform.position = objectPosition;
+        }
+
+        private bool placeButtonInBoard(RelativePlacementRandomizerTag button, RelativePlacementRandomizerTag board, Dictionary<string, bool[]> boardStates){
+            if(!boardStates.ContainsKey(board.name)){
+                return false;
+            }
+            bool[] boardState = boardStates[board.name]; 
+            if(board.name == "2-slot"){
+                if(!boardState[0] && !boardState[1]){
+                    return false;
+                }
+
+                if(!boardState[0]){
+                    placeButtonInSlot(button, board, 1);
+                    boardState[1] = false;
+                    return true;
+                }
+
+                if(!boardState[1]){
+                    placeButtonInSlot(button, board, 0);
+                    boardState[0] = false;
+                    return true;
+                }
+
+                var r = new System.Random();
+                int slot = r.Next(2);
+                placeButtonInSlot(button, board, slot);
+                boardState[slot] = false;
+                return true;
+            }
+
+            if(board.name == "3-slot"){
+                if(!boardState[0] && !boardState[1] && !boardState[2]){
+                    return false;
+                }
+
+                while(true){
+                    var r = new System.Random();
+                    int slot = r.Next(3);
+                    Debug.Log(slot);
+                    if(boardState[slot]){
+                        placeButtonInSlot(button, board, slot);
+                        boardState[slot] = false;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private void placeButtonInSlot(RelativePlacementRandomizerTag button, RelativePlacementRandomizerTag board, int slot){
+            Vector3 relativePosition = translationsToSlots[button.name][board.name][slot];
+
+            float qx = board.transform.rotation.x;
+            float qy = board.transform.rotation.y;
+            float qz = board.transform.rotation.z;
+            float qw = board.transform.rotation.w;
+
+            float R11 = 1.0f - 2.0f * (qy * qy + qz * qz);
+            float R12 = 2.0f * (qx * qy - qz * qw);
+            float R13 = 2.0f * (qx * qz + qy * qw);
+            float R21 = 2.0f * (qx * qy + qz * qw);
+            float R22 = 1.0f - 2.0f * (qx * qx + qz * qz);
+            float R23 = 2.0f * (qy * qz - qx * qw);
+            float R31 = 2.0f * (qx * qz - qy * qw);
+            float R32 = 2.0f * (qy * qz + qx * qw);
+            float R33 = 1.0f - 2.0f * (qx * qx + qy * qy);
+
+            float absX = R11 * relativePosition.x + R12*relativePosition.y +  R13*relativePosition.z;
+            float absY = R21 * relativePosition.x + R22*relativePosition.y +  R23*relativePosition.z;
+            float absZ = R31 * relativePosition.x + R32*relativePosition.y +  R33*relativePosition.z;
+
+            button.transform.position = board.transform.position + new Vector3(absX, absY, absZ);
+            button.transform.rotation = board.transform.rotation * Quaternion.Euler(new Vector3(0, -90, 0));
         }
 
         private List<RelativePlacementRandomizerTag> orderTags(IEnumerable<RelativePlacementRandomizerTag> tags){
@@ -235,10 +386,10 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
 
         private bool checkButtonFaceOccluded(RelativePlacementRandomizerTag button, List<RelativePlacementRandomizerTag> placedObjects){
             // Checks whether the face of a button is visible from the camera using the law of cosines.
-            // Faces with gamma > 90 degrees - tolerance are considered occluded
+            // Faces with gamma > 90 degrees - tolerance are considered occluded.
             // Returns true if occluded, false otherwise.
 
-            float b = 0.014f;
+            float b = 0.014f; // Distance from center of button to center of face
 
             float qx = button.transform.rotation.x;
             float qy = button.transform.rotation.y;
@@ -252,11 +403,10 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
             Vector3 absoluteTranslationToFace = new Vector3(R11 * b, R21 * b, R31 * b);
             Vector3 FaceCenterPosition = button.transform.position + absoluteTranslationToFace;
 
-            float c = button.transform.position.magnitude;
-            float a = FaceCenterPosition.magnitude;
+            float c = button.transform.position.magnitude; // Distance from camera to center of button
+            float a = FaceCenterPosition.magnitude; // Distance from camera to center of face
 
-            double gamma = System.Math.Acos((double)(c*c-a*a-b*b)/(-2*a*b));
-            Debug.Log(gamma);
+            double gamma = System.Math.Acos((double)(c*c-a*a-b*b)/(-2*a*b)); // Law of cosines
 
             return gamma < System.Math.PI/2 - occlusionTolerance/360*2*System.Math.PI;
         }
