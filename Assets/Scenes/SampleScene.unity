@@ -954,7 +954,7 @@ MonoBehaviour:
   constants:
     randomSeed: 539662031
     startIteration: 0
-    iterationCount: 100
+    iterationCount: 20000
     framesPerIteration: 1
     totalIterations: 100
     instanceCount: 1
@@ -1029,7 +1029,7 @@ MonoBehaviour:
         collapsed: 0
         <enabledStateCanBeSwitchedByUser>k__BackingField: 1
         backroundImageNumber: 956
-        scenarioIterationNumber: 10000
+        scenarioIterationNumber: 20000
     - rid: 1804855628852887552
       type: {class: RelativePlacementRandomizer, ns: UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers,
         asm: Assembly-CSharp}
@@ -1054,7 +1054,7 @@ MonoBehaviour:
           z:
             rid: 1804855628852887558
         backroundImageNumber: 956
-        scenarioIterationNumber: 10000
+        scenarioIterationNumber: 20000
         occlusionTolerance: 10
     - rid: 1804855628852887553
       type: {class: UniformSampler, ns: UnityEngine.Perception.Randomization.Samplers,

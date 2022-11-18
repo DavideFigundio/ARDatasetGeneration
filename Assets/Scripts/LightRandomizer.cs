@@ -18,11 +18,13 @@ public class MyLightRandomizer : Randomizer
         z = new UniformSampler(0, 360)
     };
 
-    protected override void OnIterationStart()
-    {   
+    protected override void OnIterationStart(){
+
+        // Getting light tag   
         var tags = tagManager.Query<LightRandomizerTag>();
 
         foreach (var tag in tags){
+            // Setting random rotation and intensity
             tag.transform.rotation = Quaternion.Euler(rotation.Sample());
             var light = tag.GetComponent<Light>();            
             light.intensity = lightIntensityParameter.Sample();

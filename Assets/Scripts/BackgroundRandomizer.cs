@@ -3,6 +3,7 @@ using UnityEngine.Perception.Randomization.Parameters;
 using UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers.Tags;
 using UnityEngine.Perception.Randomization.Samplers;
 
+// Randomizer for loading background images.
 
 namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
 {
@@ -19,11 +20,15 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
         [Tooltip("The number of total iterations in the scenario.")]
         public int scenarioIterationNumber;
 
-        protected override void OnIterationStart()
-        {
+        protected override void OnIterationStart(){
+
+            // Getting tags
             var tags = tagManager.Query<BackgroundRandomizerTag>();
+
+            // Getting image number required for current iteration
             var imageNumber = (int)System.Math.Floor((double)iterationNumber*backroundImageNumber/scenarioIterationNumber);
 
+            // Updating current image if required
             if(imageNumber != currentImage){
                 var imgname = "azure/" + imageNumber.ToString();
                 currentImage = imageNumber;
