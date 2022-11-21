@@ -185,15 +185,20 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
                 // Verifying the position does not intersect with previously placed objects.
                 invalid = checkIntersection(tag, placedTags);
 
+                if(invalid){
+                    currentAttempt++;
+                    continue;
+                }
+
                 // Additional rotation around the x-axis for buttons where this creates a noticeable visual difference.
-                if((tag.name == "arrowbutton" || tag.name == "mushroombutton") && !invalid){
+                if(tag.name == "arrowbutton" || tag.name == "mushroombutton"){
                     var xrotation = new UniformSampler(0, 360);
                     Vector3 randomXRotation = new Vector3(xrotation.Sample(), 0, 0);
                     tag.transform.rotation *= Quaternion.Euler(randomXRotation);                    
                 }
                     
                 // Check if button faces are visible
-                if((tag.name == "arrowbutton" || tag.name == "redbutton") && !invalid){
+                if(tag.name == "arrowbutton" || tag.name == "redbutton"){
                     bool occluded = checkButtonFaceOccluded(tag, placedTags);
                     
                     if(occluded && notVisibleFacePlaced){
@@ -210,19 +215,16 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
                         }
                     }
                 }
-
-                currentAttempt++;
             }
 
-            if(currentAttempt < maxAttempts){
-                // Successful placement of the object
-                return true;
-            }
-            else{
+            if(invalid){
                 // Unsuccessful placement of the object
                 // Placing object far in scene, so it is not captured by camera.
                 tag.transform.position = new Vector3(100, 0, 0);
                 return false;
+            }
+            else{
+                return true;
             }
         }
 
