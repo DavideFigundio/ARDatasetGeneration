@@ -37,10 +37,11 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
         [Tooltip("The number of total iterations in the scenario.")]
         public int scenarioIterationNumber;
 
-        [Tooltip("The tolerance for face occlusion detection.")]
+        [Tooltip("The tolerance for face occlusion detection in degrees.")]
         public double occlusionTolerance;
 
         private Dictionary<string, Dictionary<string, Dictionary<string, float>>> referencePoses;
+        private IDictionary<int, Dictionary<string, string[]>> savedBoardStates = new Dictionary<int, Dictionary<string, string[]>>();
 
         // Pose corrections for objects placed on a surface
         private Dictionary<string, Dictionary<string, float>> poseCorrections =  new Dictionary<string, Dictionary<string, float>>{
@@ -63,8 +64,8 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
         private Dictionary<string, Dictionary<string, Vector3[]>> translationsToSlots = new Dictionary<string, Dictionary<string, Vector3[]>>{
             {"mushroombutton", new Dictionary<string, Vector3[]>{
                 {"2-slot", new Vector3[] {
-                    new Vector3(0, 1.506f, 0.0356f),
-                    new Vector3(0, -1.506f, 0.0356f)
+                    new Vector3(0, 0.01506f, 0.0356f),
+                    new Vector3(0, -0.01506f, 0.0356f)
                 }},
                 {"3-slot", new Vector3[] {
                     new Vector3(0, 0.0301f, 0.0356f),
@@ -74,8 +75,8 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
             }},
             {"redbutton", new Dictionary<string, Vector3[]>{
                 {"2-slot", new Vector3[] {
-                    new Vector3(0, 1.506f, 0.0251f),
-                    new Vector3(0, -1.506f, 0.0251f)
+                    new Vector3(0, 0.01506f, 0.0251f),
+                    new Vector3(0, -0.01506f, 0.0251f)
                 }},
                 {"3-slot", new Vector3[] {
                     new Vector3(0, 0.0301f, 0.0251f),
@@ -85,8 +86,8 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
             }},
             {"arrowbutton", new Dictionary<string, Vector3[]>{
                 {"2-slot", new Vector3[] {
-                    new Vector3(0, 1.506f, 0.0251f),
-                    new Vector3(0, -1.506f, 0.0251f)
+                    new Vector3(0, 0.01506f, 0.0251f),
+                    new Vector3(0, -0.01506f, 0.0251f)
                 }},
                 {"3-slot", new Vector3[] {
                     new Vector3(0, 0.0301f, 0.0251f),
@@ -114,8 +115,11 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
                     referencePoses = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, Dictionary<string, float>>>>(text);
                 }
 
-                // Clearing previously saved occlusions.
+                // Clearing previously saved occlusions and boardstates.
                 using(StreamWriter w = new StreamWriter("occlusions.txt")){
+                    w.Write(String.Empty);
+                }
+                using(StreamWriter w = new StreamWriter("boardstates.json")){
                     w.Write(String.Empty);
                 }
             }
@@ -133,14 +137,14 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
             // Maximum number of attempts executed to place each object.
             int maxAttempts = 20;
 
-            // Arrays used to track if the slots of the button boards are free.
-            Dictionary<string, bool[]> boardStates = new Dictionary<string, bool[]>{
-                {"2-slot", new bool[] {true, true}},
-                {"3-slot", new bool[] {true, true, true}}
-            };
+            savedBoardStates.Add(new KeyValuePair<int, Dictionary<string, string[]>>(iterationNumber, new Dictionary<string, string[]>{
+                {"2-slot", new string[] {"empty", "empty"}},
+                {"3-slot", new string[] {"empty", "empty", "empty"}}
+            }));
 
+            // Placing of each object
             foreach(var tag in orderedTags){
-                bool placed = placeObject(tag, placedTags, referencePoses[imageNumber.ToString()], maxAttempts, boardStates);
+                bool placed = placeObject(tag, placedTags, referencePoses[imageNumber.ToString()], maxAttempts, savedBoardStates[iterationNumber]);
                 if(placed){
                     placedTags.Add(tag);
                 }
@@ -149,11 +153,19 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
             iterationNumber++;            
         }
 
+        protected override void OnScenarioComplete(){
+            // Once the scenario is complete, we save the boardstates for each image to file.
+            using(StreamWriter w = new StreamWriter("boardstates.json")){
+                string json = JsonConvert.SerializeObject(savedBoardStates);
+                w.Write(json);
+            }
+        }
+
         private bool placeObject(RelativePlacementRandomizerTag tag, 
                                 List<RelativePlacementRandomizerTag> placedTags, 
                                 Dictionary<string, Dictionary<string, float>> referencePose, 
                                 int maxAttempts,
-                                Dictionary<string, bool[]> boardStates){
+                                Dictionary<string, string[]> boardStates){
 
             // Makes maxAttempts attempts to place the object corresponding to the specified tag relative to the given reference system.
             // Returns true if successful, false otherwise.
@@ -279,7 +291,7 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
             tag.transform.position = objectPosition;
         }
 
-        private bool placeButtonInBoard(RelativePlacementRandomizerTag button, RelativePlacementRandomizerTag board, Dictionary<string, bool[]> boardStates){
+        private bool placeButtonInBoard(RelativePlacementRandomizerTag button, RelativePlacementRandomizerTag board, Dictionary<string, string[]> boardStates){
             // Function that places a button in a random slot in a button board.
             // Returns true if successful, false otherwise.
             
@@ -288,53 +300,48 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
                 return false;
             }
 
-            bool[] boardState = boardStates[board.name]; 
+            string[] boardState = boardStates[board.name]; 
 
             // Handling of 2-slot board
             if(board.name == "2-slot"){
                 // 2-slot may already be full when attempting to place a button
                 // In this case we return false
-                if(!boardState[0] && !boardState[1]){
+                if(boardState[0] != "empty" && boardState[1] != "empty"){
                     return false;
                 }
 
-                // If 1 slot is already full, place it in the other
-                if(!boardState[0]){
-                    placeButtonInSlot(button, board, 1);
-                    boardState[1] = false;
-                    return true;
-                }
+                else{
+                // Bruteforce placing the button in a free slot because I'm lazy
+                    for(int i = 0; i < 100; i++){ // Limit to 100 attempts because I'm not stupid
+                        var r = new System.Random();
+                        int slot = r.Next(2);
 
-                if(!boardState[1]){
-                    placeButtonInSlot(button, board, 0);
-                    boardState[0] = false;
-                    return true;
+                        if(boardState[slot] == "empty"){
+                            placeButtonInSlot(button, board, slot);
+                            boardState[slot] = button.name;
+                            return true;
+                        }
+                    }
                 }
-
-                // If both are empty, place it at random.
-                var r = new System.Random();
-                int slot = r.Next(2);
-                placeButtonInSlot(button, board, slot);
-                boardState[slot] = false;
-                return true;
             }
 
             // Handling of 3-slot board
             if(board.name == "3-slot"){
                 // Full board is impossible with only 3 buttons but just in case
-                if(!boardState[0] && !boardState[1] && !boardState[2]){
+                if(boardState[0] != "empty" && boardState[1] != "empty" && boardState[2] != "empty"){
                     return false;
                 }
-
+                else{
                 // Bruteforce placing the button in a free slot because I'm lazy
-                for(int i = 0; i < 100; i++){ // Limit to 100 attempts because I'm not stupid
-                    var r = new System.Random();
-                    int slot = r.Next(3);
+                    for(int i = 0; i < 100; i++){ // Limit to 100 attempts because I'm not stupid
+                        var r = new System.Random();
+                        int slot = r.Next(3);
 
-                    if(boardState[slot]){
-                        placeButtonInSlot(button, board, slot);
-                        boardState[slot] = false;
-                        return true;
+                        if(boardState[slot] == "empty"){
+                            placeButtonInSlot(button, board, slot);
+                            boardState[slot] = button.name;
+                            return true;
+                        }
                     }
                 }
             }
@@ -372,6 +379,13 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
             // Applying translation and rotation to the button
             button.transform.position = board.transform.position + new Vector3(absX, absY, absZ);
             button.transform.rotation = board.transform.rotation * Quaternion.Euler(new Vector3(0, -90, 0));
+
+            // Applying final random rotation for buttons where this is visible
+            if(button.name == "arrowbutton" || button.name == "mushroombutton"){
+                var xrotation = new UniformSampler(0, 360);
+                Vector3 randomXRotation = new Vector3(xrotation.Sample(), 0, 0);
+                button.transform.rotation *= Quaternion.Euler(randomXRotation);                    
+            }
         }
 
         private List<RelativePlacementRandomizerTag> orderTags(IEnumerable<RelativePlacementRandomizerTag> tags){
@@ -441,7 +455,7 @@ namespace UnityEngine.Perception.Randomization.Randomizers.SampleRandomizers
 
             double gamma = System.Math.Acos((double)(c*c-a*a-b*b)/(-2*a*b)); // Law of cosines
 
-            return gamma < System.Math.PI/2 - occlusionTolerance/360*2*System.Math.PI;
+            return gamma < System.Math.PI/2 + occlusionTolerance/360*2*System.Math.PI;
         }
     }
 }
